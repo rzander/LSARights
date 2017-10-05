@@ -11,7 +11,7 @@ Get-Right -User 'DOMAIN\User'
 Get-Right 'User'
 
 .LINK
-http://rzander.azurewebsites.net
+https://github.com/rzander/LSARights
 
 #>
 
