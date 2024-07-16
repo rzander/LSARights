@@ -34,20 +34,20 @@ public static class LsaWrapperSetRight
         );
 
     [DllImport("advapi32.dll", SetLastError = true, PreserveSig = true)]
-    private static extern long LsaAddAccountRights(
+    private static extern uint LsaAddAccountRights(
         IntPtr PolicyHandle,
         IntPtr AccountSid,
         LSA_UNICODE_STRING[] UserRights,
-        long CountOfRights);
+        uint CountOfRights);
 
     [DllImport("advapi32.dll", PreserveSig = true)]
-    static extern long LsaRemoveAccountRights(
+    static extern uint LsaRemoveAccountRights(
         IntPtr PolicyHandle,
         IntPtr AccountSid,
         [MarshalAs(UnmanagedType.U1)]
         bool AllRights,
         LSA_UNICODE_STRING[] UserRights,
-        long CountOfRights);
+        uint CountOfRights);
 
     [DllImport("advapi32.dll", SetLastError = true)]
     public static extern uint LsaEnumerateAccountRights(
@@ -56,7 +56,7 @@ public static class LsaWrapperSetRight
         out IntPtr UserRights,
         out uint CountOfRights);
 
-    [System.Runtime.InteropServices.DllImport("advapi32.dll", SetLastError = true)]
+    [DllImport("advapi32.dll", SetLastError = true)]
     private static extern uint LsaFreeMemory(System.IntPtr pBuffer);
 
     [DllImport("advapi32")]
@@ -78,8 +78,11 @@ public static class LsaWrapperSetRight
     [DllImport("kernel32.dll")]
     private static extern int GetLastError();
 
-    [DllImport("advapi32.dll")]
-    private static extern long LsaNtStatusToWinError(long status);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern uint LsaNtStatusToWinError(uint status);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern bool ConvertStringSidToSid(string StringSid, out IntPtr Sid);
 
     private enum LSA_AccessPolicy : long
     {
@@ -135,16 +138,24 @@ public static class LsaWrapperSetRight
         //account-type variable for lookup
         int accountType = 0;
 
-        //get required buffer size
-        LookupAccountName(String.Empty, accountName, sid, ref sidSize, domainName, ref nameSize, ref accountType);
+        bool result = true;
+        if (accountName.ToLower().StartsWith("s-1-5-"))
+        {
+            ConvertStringSidToSid(accountName, out sid);
+        }
+        else
+        {
+            //get required buffer size
+            LookupAccountName(String.Empty, accountName, sid, ref sidSize, domainName, ref nameSize, ref accountType);
 
-        //allocate buffers
-        domainName = new StringBuilder(nameSize);
-        sid = Marshal.AllocHGlobal(sidSize);
+            //allocate buffers
+            domainName = new StringBuilder(nameSize);
+            sid = Marshal.AllocHGlobal(sidSize);
 
-        //lookup the SID for the account
-        bool result = LookupAccountName(String.Empty, accountName, sid, ref sidSize, domainName, ref nameSize,
-                                        ref accountType);
+
+            //lookup the SID for the account
+            result = LookupAccountName(String.Empty, accountName, sid, ref sidSize, domainName, ref nameSize, ref accountType);
+        }
 
         //say what you're doing
         //Console.WriteLine("LookupAccountName result = " + result);
@@ -218,7 +229,7 @@ public static class LsaWrapperSetRight
             userRights[0].MaximumLength = (UInt16)((privilegeName.Length + 1) * UnicodeEncoding.CharSize);
 
             //add the right to the account
-            long res = LsaAddAccountRights(policyHandle, sid, userRights, 1);
+            uint res = LsaAddAccountRights(policyHandle, sid, userRights, 1);
             winErrorCode = LsaNtStatusToWinError(res);
             if (winErrorCode != 0)
             {
@@ -249,7 +260,7 @@ public static class LsaWrapperSetRight
             userRights[0].MaximumLength = (UInt16)((privilegeName.Length + 1) * UnicodeEncoding.CharSize);
 
             //add the right to the account
-            long res = LsaRemoveAccountRights(policyHandle, sid, false, userRights, 1);
+            uint res = LsaRemoveAccountRights(policyHandle, sid, false, userRights, 1);
             winErrorCode = LsaNtStatusToWinError(res);
             if (winErrorCode != 0)
             {
@@ -393,7 +404,7 @@ SeServiceLogonRight = Required for an account to log on using the service logon 
 
     begin {
         $res = [LsaWrapperSetRight]::AddRight($Username, $Right) 
-        if ($res -ne 0) { Write-Error -Message "Unable to set LSA rights." -ErrorId $res} 
+        if ($res -ne 0) { Write-Error -Message "Unable to set LSA rights." -ErrorId $res } 
     }
 }
 
@@ -440,6 +451,6 @@ SeServiceLogonRight = Required for an account to log on using the service logon 
 
     begin {
         $res = [LsaWrapperSetRight]::RemoveRight($Username, $Right)
-        if ($res -ne 0) { Write-Error -Message "Unable to remove LSA rights." -ErrorId $res} 
+        if ($res -ne 0) { Write-Error -Message "Unable to remove LSA rights." -ErrorId $res } 
     }
 }
